@@ -6,35 +6,30 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
+    poetry2nix = {
+      url = "github:nix-community/poetry2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, mach-nix, ... }:
+  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-
-        poetry-env = pkgs.poetry2nix.mkPoetryEnv { projectDir = ./.; };
+        inherit (poetry2nix.lib.mkPoetry2Nix { inherit pkgs; }) mkPoetryApplication;
       in
       {
-        devShell = poetry-env.env.overrideAttrs (oldAttrs: {
-          buildInputs = with pkgs;
-            [
-              nixpkgs-fmt
-              entr
-              fd
-              poetry
-            ];
-        });
-        packages =
-          {
-            default = pkgs.poetry2nix.mkPoetryApplication {
-              projectDir = ./.;
-            };
-          };
-
+        packages = {
+          app = mkPoetryApplication { projectDir = self; };
+          default = self.packages.${system}.app;
+        };
+        devShells.default = pkgs.mkShell {
+          inputsFrom = [ self.packages.${system}.app ];
+          packages = with pkgs; [
+            poetry
+            nixpkgs-fmt
+            ruff
+          ];
+        };
       });
 }
